@@ -12,6 +12,9 @@ M.state = nil
 M.op = false
 M.enabled = true
 
+---@type integer?
+M.delay = nil
+
 ---@param enabled? boolean
 function M.toggle(enabled)
   if enabled == nil then
@@ -71,48 +74,133 @@ function M.start()
   end
 end
 
+local cmdline_changed_callback, cmdline_leave_callback, cmdline_enter_callback, mode_changed_callback, cmdline_changed_callback1, cmdline_leave_callback1, cmdline_enter_callback1 --, mode_changed_callback1
+
+do
+  local function wrap(fn)
+    return function(...)
+      if M.state then return fn(...) end
+    end
+  end
+
+  local timer_callback = vim.schedule_wrap(function()
+    --[[print(
+      string.format(
+        "Timer elapsed. S/V: %d/%d, CJ: %d->1",
+        M.state and 1 or 0,
+        M.state and M.state.visible and 1 or 0,
+        M.check_jump and 1 or 0
+      )
+    ) --]]
+    if M.state then
+      if not M.state.visible then
+        M.state:update({ force = true, check_jump = false })
+        M.state:show()
+        vim.cmd "redraw"
+        -- vim.api.nvim__redraw({})
+      end
+      M.check_jump = M.state ~= nil
+    end
+  end)
+
+  -- Search trigger --> Flash hidden initially until timer expires after last input change
+  -- Typing --> reset timer to restart delay for activating/enabling Flash
+  -- Timer expires --> activate/enable Flash
+
+  cmdline_changed_callback = wrap(function() M.update() end)
+
+  ---@param tbl {file:string}
+  cmdline_changed_callback1 = wrap(function(tbl)
+    --[[print(
+      string.format(
+        "Received input (%s). Remaining time: %s, S/V: %d/%d, CJ: %d->?",
+        tbl.file,
+        M.timer and tostring(vim.uv.timer_get_due_in(M.timer)) or "(nil)",
+        M.state and 1 or 0,
+        M.state.visible and 1 or 0,
+        M.check_jump and 1 or 0
+      )
+    ) --]]
+    if tbl.file == "/" or tbl.file == "?" then
+      if not (M.update(M.check_jump) or resetting_timer) then
+        M.resetting_timer = true
+        M.check_jump = false
+        if M.state and M.state.visible then M.state:hide() end
+        if M.timer and vim.uv.timer_get_due_in(M.timer) > 0 then vim.uv.timer_stop(M.timer) end
+        if not M.timer then M.timer = vim.uv.new_timer() end
+        vim.uv.timer_start(M.timer, M.delay, 0, timer_callback)
+        M.resetting_timer = false
+      end
+    else
+      if M.timer then vim.uv.timer_stop(M.timer) end
+      M.check_jump = false
+      M.update(false)
+      if M.state and M.state.visible then M.state:hide() end
+    end
+  end)
+
+  cmdline_leave_callback = wrap(function()
+    M.state:hide()
+    M.state = nil
+  end)
+
+  cmdline_leave_callback1 = wrap(function()
+    if M.timer then vim.uv.timer_stop(M.timer) end
+    if M.state.visible then M.state:hide() end
+    M.state = nil
+  end)
+
+  cmdline_enter_callback = function()
+    if State.is_search() and M.enabled then
+      M.start()
+      M.set_op(vim.fn.mode() == "v")
+    end
+  end
+
+  cmdline_enter_callback1 = function()
+    M.Timer = M.Timer or vim.uv.new_timer()
+    if State.is_search() and M.enabled then
+      M.set_op(vim.fn.mode() == "v")
+      M.check_jump = false
+      vim.uv.timer_start(M.Timer, M.delay, 0, timer_callback)
+      M.start()
+      M.state:hide()
+    end
+  end
+
+  mode_changed_callback = function() M.set_op(vim.v.event.old_mode:sub(1, 2) == "no" or vim.fn.mode() == "v") end
+end
+
 function M.setup()
   local group = vim.api.nvim_create_augroup("flash", { clear = true })
   M.enabled = Config.modes.search.enabled or false
 
-  local function wrap(fn)
-    return function(...)
-      if M.state then
-        return fn(...)
-      end
-    end
+  if Config.modes.search.delay == true then
+    M.delay = 1500
+  elseif Config.modes.search.delay and Config.modes.search.delay > 0 then
+    M.delay = Config.modes.search.delay --[[@as integer]]
+  else
+    M.delay = nil
   end
 
   vim.api.nvim_create_autocmd("CmdlineChanged", {
     group = group,
-    callback = wrap(function()
-      M.update()
-    end),
+    callback = M.delay and cmdline_changed_callback1 or cmdline_changed_callback,
   })
 
   vim.api.nvim_create_autocmd("CmdlineLeave", {
     group = group,
-    callback = wrap(function()
-      M.state:hide()
-      M.state = nil
-    end),
+    callback = M.delay and cmdline_leave_callback1 or cmdline_leave_callback,
   })
   vim.api.nvim_create_autocmd("CmdlineEnter", {
     group = group,
-    callback = function()
-      if State.is_search() and M.enabled then
-        M.start()
-        M.set_op(vim.fn.mode() == "v")
-      end
-    end,
+    callback = M.delay and cmdline_enter_callback1 or cmdline_enter_callback,
   })
 
   vim.api.nvim_create_autocmd("ModeChanged", {
     pattern = "*:c",
     group = group,
-    callback = function()
-      M.set_op(vim.v.event.old_mode:sub(1, 2) == "no" or vim.fn.mode() == "v")
-    end,
+    callback = mode_changed_callback,
   })
 end
 

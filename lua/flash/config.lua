@@ -4,11 +4,13 @@ local M = {}
 ---@class Flash.Config
 ---@field mode? string
 ---@field enabled? boolean
+---@field delay? integer|boolean
 ---@field ns? string
 ---@field config? fun(opts:Flash.Config)
 local defaults = {
   -- labels = "abcdefghijklmnopqrstuvwxyz",
   labels = "asdfghjklqwertyuiopzxcvbnm",
+  delay = false,
   search = {
     -- search/jump in all windows
     multi_window = true,
@@ -147,6 +149,7 @@ local defaults = {
       -- when `true`, flash will be activated during regular search by default.
       -- You can always toggle when searching with `require("flash").toggle()`
       enabled = false,
+      delay = false,
       highlight = { backdrop = false },
       jump = { history = true, register = true, nohlsearch = true },
       search = {
