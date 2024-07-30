@@ -227,7 +227,7 @@ function M:check_jump(pattern)
   end
 end
 
----@param opts? {pattern:string, force:boolean, check_jump:boolean}
+---@param opts? {pattern?:string, force?:boolean, check_jump?:boolean}
 ---@return boolean? abort `true` if the search was aborted
 function M:update(opts)
   opts = opts or {}

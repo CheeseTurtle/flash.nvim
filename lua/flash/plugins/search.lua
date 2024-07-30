@@ -29,6 +29,10 @@ function M.toggle(enabled)
 
   if State.is_search() then
     if M.enabled then
+      if M.delay then
+        M.check_jump = true
+        M.timer = vim.uv.new_timer()
+      end
       M.start()
       M.update(false)
     elseif M.state then

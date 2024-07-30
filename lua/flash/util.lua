@@ -80,8 +80,10 @@ function M.save_layout()
         end
       end
     end
-    vim.api.nvim_set_current_win(current_win)
+    local tf, msg = pcall(vim.api.nvim_set_current_win, current_win)
     state = {}
+    -- E11: Invalid in command-line window
+    if not (tf or not msg or msg:match("^E11: ")) then error(msg) end
   end
 end
 
